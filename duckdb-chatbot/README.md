@@ -54,16 +54,45 @@ Main conversational interface featuring:
 
 ## Installation
 
-1. Install required dependencies:
+This project uses [uv](https://github.com/astral-sh/uv) for fast, reliable dependency management.
+
+1. Install uv (if not already installed):
 
 ```bash
-pip install -r requirements.txt
+# On macOS and Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# On Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or with pip
+pip install uv
 ```
 
-2. Set your Anthropic API key:
+2. Install project dependencies:
+
+```bash
+# Install all dependencies
+uv pip install -e .
+
+# Or install in a virtual environment (recommended)
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -e .
+```
+
+3. Set your Anthropic API key:
 
 ```bash
 export ANTHROPIC_API_KEY="your-api-key-here"
+```
+
+### Alternative: Using pip
+
+If you prefer using pip, you can install directly from pyproject.toml:
+
+```bash
+pip install -e .
 ```
 
 ## Usage
@@ -182,8 +211,9 @@ duckdb-chatbot/
 ├── python_executor.py      # Python code execution environment
 ├── example.py              # Basic usage examples
 ├── example_csv.py          # CSV data loading example
+├── test_basic.py           # Component tests
 ├── sample_data.csv         # Sample dataset for testing
-├── requirements.txt        # Python dependencies
+├── pyproject.toml          # Project metadata and dependencies (uv/pip)
 ├── notes.md               # Development notes and learnings
 └── README.md              # This file
 ```

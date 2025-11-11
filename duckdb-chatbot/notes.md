@@ -112,11 +112,30 @@ Since this requires an API key and is a demonstration project:
 
 ### Dependencies
 
-All dependencies specified in requirements.txt:
+All dependencies specified in pyproject.toml:
 - duckdb: Database engine
 - anthropic: Claude API client
 - matplotlib: Plotting library
 - pandas: Data manipulation
 - numpy: Numerical operations
 - seaborn: Statistical visualizations
+
+### Dependency Management with uv
+
+Converted project to use `uv` for dependency management:
+- Created pyproject.toml with project metadata and dependencies
+- Removed requirements.txt in favor of modern Python packaging standards
+- Benefits of uv:
+  - Much faster dependency resolution and installation (10-100x faster than pip)
+  - Written in Rust for performance
+  - Compatible with pip and standard Python packaging
+  - Better caching and conflict resolution
+  - Supports both pip-style and Poetry-style workflows
+
+Installation options:
+1. `uv pip install -e .` - Install in current environment
+2. `uv venv && uv pip install -e .` - Create virtual environment and install
+3. `pip install -e .` - Still works with standard pip
+
+The pyproject.toml also includes optional dev dependencies and tool configurations for code formatting (black) and linting (ruff).
 

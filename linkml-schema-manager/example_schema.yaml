@@ -1,0 +1,93 @@
+id: https://example.org/patient-schema
+name: patient_schema
+description: Example schema for patient sample data
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  example: https://example.org/
+
+default_prefix: example
+
+slots:
+  sample_id:
+    required: true
+    range: string
+    description: Unique identifier for the sample
+    pattern: "^[A-Z]{2}[0-9]{6}$"
+
+  patient_id:
+    required: true
+    range: string
+    description: Unique patient identifier
+
+  collection_date:
+    required: true
+    range: date
+    description: Date when the sample was collected
+
+  sample_type:
+    required: true
+    range: sample_type_enum
+    description: Type of biological sample
+
+  age:
+    required: false
+    range: integer
+    description: Patient age at collection time
+    minimum_value: 0
+    maximum_value: 120
+
+  diagnosis:
+    required: false
+    range: string
+    description: Primary diagnosis
+
+  treatment_status:
+    required: false
+    range: treatment_status_enum
+    description: Treatment status at time of collection
+
+  notes:
+    required: false
+    range: string
+    description: Additional notes or comments
+
+enums:
+  sample_type_enum:
+    description: Types of biological samples
+    permissible_values:
+      BLOOD:
+        description: Blood sample
+      TISSUE:
+        description: Tissue biopsy
+      SALIVA:
+        description: Saliva sample
+      URINE:
+        description: Urine sample
+      OTHER:
+        description: Other sample type
+
+  treatment_status_enum:
+    description: Patient treatment status
+    permissible_values:
+      UNTREATED:
+        description: No treatment received
+      ONGOING:
+        description: Currently receiving treatment
+      COMPLETED:
+        description: Treatment completed
+      UNKNOWN:
+        description: Treatment status unknown
+
+classes:
+  PatientSample:
+    description: Represents a patient sample with associated metadata
+    slots:
+      - sample_id
+      - patient_id
+      - collection_date
+      - sample_type
+      - age
+      - diagnosis
+      - treatment_status
+      - notes

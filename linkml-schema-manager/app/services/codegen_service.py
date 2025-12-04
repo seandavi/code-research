@@ -1,9 +1,15 @@
 """Service for code generation from LinkML schemas."""
 import yaml
+import tempfile
+import os
 from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.schema_service import SchemaService
+from linkml.generators.pythongen import PythonGenerator
+from linkml.generators.typescriptgen import TypescriptGenerator
+from linkml.generators.jsonschemagen import JsonSchemaGenerator
+from linkml_runtime.utils.schemaview import SchemaView
 
 
 class CodeGenService:
@@ -46,51 +52,25 @@ class CodeGenService:
 
     @staticmethod
     def _generate_python(schema_content: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Generate Python dataclasses from LinkML schema."""
+        """Generate Python dataclasses from LinkML schema using LinkML's PythonGenerator."""
         try:
-            schema = yaml.safe_load(schema_content)
+            # Write schema to temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
+                tmp.write(schema_content)
+                tmp_path = tmp.name
 
-            code_lines = [
-                '"""Auto-generated Python classes from LinkML schema."""',
-                'from dataclasses import dataclass, field',
-                'from typing import Optional, List, Dict, Any',
-                'from datetime import datetime',
-                '',
-                ''
-            ]
+            try:
+                # Use LinkML's PythonGenerator
+                generator = PythonGenerator(tmp_path, **(options or {}))
+                generated_code = generator.serialize()
 
-            # Generate classes
-            classes = schema.get('classes', {})
-            for class_name, class_def in classes.items():
-                code_lines.append(f'@dataclass')
-                code_lines.append(f'class {class_name}:')
-
-                # Get class description
-                if isinstance(class_def, dict) and 'description' in class_def:
-                    code_lines.append(f'    """{class_def["description"]}"""')
-
-                # Get class attributes
-                attributes = class_def.get('attributes', {}) if isinstance(class_def, dict) else {}
-                if not attributes:
-                    code_lines.append('    pass')
-                else:
-                    for attr_name, attr_def in attributes.items():
-                        if isinstance(attr_def, dict):
-                            attr_type = CodeGenService._get_python_type(attr_def.get('range', 'string'))
-                            required = attr_def.get('required', False)
-
-                            if required:
-                                code_lines.append(f'    {attr_name}: {attr_type}')
-                            else:
-                                code_lines.append(f'    {attr_name}: Optional[{attr_type}] = None')
-
-                code_lines.append('')
-
-            return {
-                'code': '\n'.join(code_lines),
-                'language': 'python',
-                'files': {'models.py': '\n'.join(code_lines)}
-            }
+                return {
+                    'code': generated_code,
+                    'language': 'python',
+                    'files': {'models.py': generated_code}
+                }
+            finally:
+                os.unlink(tmp_path)
 
         except Exception as e:
             return {
@@ -100,44 +80,25 @@ class CodeGenService:
 
     @staticmethod
     def _generate_typescript(schema_content: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Generate TypeScript interfaces from LinkML schema."""
+        """Generate TypeScript interfaces from LinkML schema using LinkML's TypescriptGenerator."""
         try:
-            schema = yaml.safe_load(schema_content)
+            # Write schema to temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
+                tmp.write(schema_content)
+                tmp_path = tmp.name
 
-            code_lines = [
-                '// Auto-generated TypeScript interfaces from LinkML schema',
-                '',
-            ]
+            try:
+                # Use LinkML's TypescriptGenerator
+                generator = TypescriptGenerator(tmp_path, **(options or {}))
+                generated_code = generator.serialize()
 
-            # Generate interfaces
-            classes = schema.get('classes', {})
-            for class_name, class_def in classes.items():
-                # Get class description
-                if isinstance(class_def, dict) and 'description' in class_def:
-                    code_lines.append(f'/** {class_def["description"]} */')
-
-                code_lines.append(f'export interface {class_name} {{')
-
-                # Get class attributes
-                attributes = class_def.get('attributes', {}) if isinstance(class_def, dict) else {}
-                for attr_name, attr_def in attributes.items():
-                    if isinstance(attr_def, dict):
-                        attr_type = CodeGenService._get_typescript_type(attr_def.get('range', 'string'))
-                        required = attr_def.get('required', False)
-                        optional = '?' if not required else ''
-
-                        if 'description' in attr_def:
-                            code_lines.append(f'  /** {attr_def["description"]} */')
-                        code_lines.append(f'  {attr_name}{optional}: {attr_type};')
-
-                code_lines.append('}')
-                code_lines.append('')
-
-            return {
-                'code': '\n'.join(code_lines),
-                'language': 'typescript',
-                'files': {'types.ts': '\n'.join(code_lines)}
-            }
+                return {
+                    'code': generated_code,
+                    'language': 'typescript',
+                    'files': {'types.ts': generated_code}
+                }
+            finally:
+                os.unlink(tmp_path)
 
         except Exception as e:
             return {
@@ -147,40 +108,25 @@ class CodeGenService:
 
     @staticmethod
     def _generate_json_schema(schema_content: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Generate JSON Schema from LinkML schema."""
+        """Generate JSON Schema from LinkML schema using LinkML's JsonSchemaGenerator."""
         try:
-            import json
-            schema = yaml.safe_load(schema_content)
+            # Write schema to temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
+                tmp.write(schema_content)
+                tmp_path = tmp.name
 
-            json_schema = {
-                '$schema': 'http://json-schema.org/draft-07/schema#',
-                'title': schema.get('name', schema.get('id', 'Schema')),
-                'description': schema.get('description', ''),
-                'type': 'object',
-                'properties': {},
-                'required': []
-            }
+            try:
+                # Use LinkML's JsonSchemaGenerator
+                generator = JsonSchemaGenerator(tmp_path, **(options or {}))
+                generated_code = generator.serialize()
 
-            # Convert slots to JSON schema properties
-            slots = schema.get('slots', {})
-            for slot_name, slot_def in slots.items():
-                if isinstance(slot_def, dict):
-                    prop = {
-                        'type': CodeGenService._get_json_schema_type(slot_def.get('range', 'string'))
-                    }
-                    if 'description' in slot_def:
-                        prop['description'] = slot_def['description']
-
-                    json_schema['properties'][slot_name] = prop
-
-                    if slot_def.get('required', False):
-                        json_schema['required'].append(slot_name)
-
-            return {
-                'code': json.dumps(json_schema, indent=2),
-                'language': 'json-schema',
-                'files': {'schema.json': json.dumps(json_schema, indent=2)}
-            }
+                return {
+                    'code': generated_code,
+                    'language': 'json-schema',
+                    'files': {'schema.json': generated_code}
+                }
+            finally:
+                os.unlink(tmp_path)
 
         except Exception as e:
             return {
@@ -189,61 +135,16 @@ class CodeGenService:
             }
 
     @staticmethod
-    def _get_python_type(linkml_type: str) -> str:
-        """Map LinkML type to Python type."""
-        type_map = {
-            'string': 'str',
-            'integer': 'int',
-            'float': 'float',
-            'double': 'float',
-            'boolean': 'bool',
-            'date': 'str',
-            'datetime': 'datetime',
-            'uri': 'str',
-        }
-        return type_map.get(linkml_type.lower(), 'Any')
-
-    @staticmethod
-    def _get_typescript_type(linkml_type: str) -> str:
-        """Map LinkML type to TypeScript type."""
-        type_map = {
-            'string': 'string',
-            'integer': 'number',
-            'float': 'number',
-            'double': 'number',
-            'boolean': 'boolean',
-            'date': 'string',
-            'datetime': 'string',
-            'uri': 'string',
-        }
-        return type_map.get(linkml_type.lower(), 'any')
-
-    @staticmethod
-    def _get_json_schema_type(linkml_type: str) -> str:
-        """Map LinkML type to JSON Schema type."""
-        type_map = {
-            'string': 'string',
-            'integer': 'integer',
-            'float': 'number',
-            'double': 'number',
-            'boolean': 'boolean',
-            'date': 'string',
-            'datetime': 'string',
-            'uri': 'string',
-        }
-        return type_map.get(linkml_type.lower(), 'string')
-
-    @staticmethod
     async def generate_excel_template(
         db: AsyncSession,
         schema_name: str,
         schema_version: str
     ) -> Optional[bytes]:
         """
-        Generate an Excel template from a schema.
+        Generate an Excel template from a schema using SchemaView.
 
         Returns:
-            Excel file as bytes or None if schema not found
+            CSV file as bytes or None if schema not found
         """
         # Get schema version
         schema_ver = await SchemaService.get_schema_version(
@@ -257,37 +158,52 @@ class CodeGenService:
             import io
             import csv
 
-            schema = yaml.safe_load(schema_ver.content)
+            # Write schema to temporary file for SchemaView
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
+                tmp.write(schema_ver.content)
+                tmp_path = tmp.name
 
-            # Create CSV template (simplified - could use openpyxl for real Excel)
-            output = io.StringIO()
+            try:
+                # Use SchemaView for proper schema introspection
+                schema_view = SchemaView(tmp_path)
 
-            # Get column headers from slots
-            slots = schema.get('slots', {})
-            headers = list(slots.keys())
+                # Create CSV template
+                output = io.StringIO()
 
-            writer = csv.writer(output)
-            writer.writerow(headers)
+                # Get all slots from the schema
+                all_slots = schema_view.all_slots()
+                headers = [slot.name for slot in all_slots.values() if slot.name]
 
-            # Add example row with placeholders
-            example_row = []
-            for slot_name, slot_def in slots.items():
-                if isinstance(slot_def, dict):
-                    slot_range = slot_def.get('range', 'string')
+                writer = csv.writer(output)
+                writer.writerow(headers)
+
+                # Add example row with placeholders based on slot ranges
+                example_row = []
+                for slot in all_slots.values():
+                    if not slot.name:
+                        continue
+
+                    slot_range = slot.range or 'string'
+
                     if slot_range == 'integer':
                         example_row.append('0')
-                    elif slot_range == 'float':
+                    elif slot_range in ['float', 'double']:
                         example_row.append('0.0')
                     elif slot_range == 'boolean':
                         example_row.append('true')
+                    elif slot_range == 'date':
+                        example_row.append('2024-01-01')
+                    elif slot_range == 'datetime':
+                        example_row.append('2024-01-01T00:00:00')
                     else:
-                        example_row.append(f'example_{slot_name}')
-                else:
-                    example_row.append(f'example_{slot_name}')
+                        example_row.append(f'example_{slot.name}')
 
-            writer.writerow(example_row)
+                writer.writerow(example_row)
 
-            return output.getvalue().encode('utf-8')
+                return output.getvalue().encode('utf-8')
+
+            finally:
+                os.unlink(tmp_path)
 
         except Exception as e:
             return None

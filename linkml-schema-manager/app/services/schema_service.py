@@ -10,9 +10,9 @@ from sqlalchemy.orm import selectinload
 
 from app.models import Schema, SchemaVersion
 from app.config import SCHEMA_STORAGE_DIR
-from linkml_runtime.loaders import yaml_loader
-from linkml_runtime.dumpers import yaml_dumper
-from linkml.validator import validate
+from linkml_runtime.utils.schemaview import SchemaView
+from linkml_runtime.linkml_model import SchemaDefinition
+import tempfile
 
 
 class SchemaService:
@@ -72,24 +72,35 @@ class SchemaService:
             Tuple of (is_valid, error_message, parsed_content)
         """
         try:
-            # Parse YAML
+            # Parse YAML first
             parsed = yaml.safe_load(content)
 
             if not isinstance(parsed, dict):
                 return False, "YAML content must be a dictionary", None
 
-            # Basic LinkML schema validation - check for required fields
-            if 'id' not in parsed and 'name' not in parsed:
-                return False, "LinkML schema must have 'id' or 'name' field", None
+            # Use LinkML's SchemaView to validate the schema structure
+            # Write to a temporary file for SchemaView to load
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
 
-            # Try to validate as LinkML schema
-            # This is a basic check - more sophisticated validation could be added
-            return True, None, parsed
+            try:
+                # SchemaView will validate the schema structure
+                schema_view = SchemaView(tmp_path)
+
+                # Check that the schema has a name or id
+                if not schema_view.schema.name and not schema_view.schema.id:
+                    return False, "LinkML schema must have 'id' or 'name' field", None
+
+                return True, None, parsed
+            finally:
+                # Clean up temp file
+                os.unlink(tmp_path)
 
         except yaml.YAMLError as e:
             return False, f"Invalid YAML: {str(e)}", None
         except Exception as e:
-            return False, f"Validation error: {str(e)}", None
+            return False, f"Schema validation error: {str(e)}", None
 
     @staticmethod
     async def create_schema_version(

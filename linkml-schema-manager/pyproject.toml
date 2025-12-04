@@ -13,8 +13,6 @@ dependencies = [
     "pydantic>=2.9.0",
     "sqlalchemy>=2.0.0",
     "aiosqlite>=0.20.0",
-    "python-jose>=3.3.0",
-    "difflib2>=0.2.0",
 ]
 
 [tool.uv]

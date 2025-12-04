@@ -2,12 +2,16 @@
 import json
 import csv
 import yaml
+import tempfile
+import os
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ValidationLog, SchemaVersion
 from app.services.schema_service import SchemaService
+from linkml.validator import Validator
+from linkml_runtime.utils.schemaview import SchemaView
 
 
 class ValidationService:
@@ -109,7 +113,7 @@ class ValidationService:
         validation_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Validate data against a LinkML schema.
+        Validate data against a LinkML schema using LinkML's Validator.
 
         Returns:
             Dictionary with validation results
@@ -118,41 +122,65 @@ class ValidationService:
         warnings = []
 
         try:
-            # Parse schema
-            schema = yaml.safe_load(schema_content)
+            # Write schema to temporary file for LinkML validator
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as schema_tmp:
+                schema_tmp.write(schema_content)
+                schema_path = schema_tmp.name
 
-            # If data is a list of records (CSV), validate each row
-            if isinstance(data, list):
-                for idx, row in enumerate(data):
-                    row_errors = ValidationService._validate_row(
-                        row, schema, idx + 1, validation_config
-                    )
-                    errors.extend(row_errors)
-            # If data is a single object
-            elif isinstance(data, dict):
-                errors.extend(ValidationService._validate_row(
-                    data, schema, 1, validation_config
-                ))
-            else:
-                errors.append({
-                    'message': 'Data must be a dictionary or list of dictionaries',
-                    'row': None,
-                    'field': None
-                })
+            try:
+                # Create SchemaView for schema introspection
+                schema_view = SchemaView(schema_path)
 
-            # Generate summary
-            if errors:
-                summary = f"Validation failed with {len(errors)} error(s)"
-            elif warnings:
-                summary = f"Validation passed with {len(warnings)} warning(s)"
-            else:
-                summary = "Validation passed successfully"
+                # Get the target class for validation
+                # Use the first class defined in the schema, or allow config to override
+                target_class = None
+                if validation_config and 'target_class' in validation_config:
+                    target_class = validation_config['target_class']
+                else:
+                    # Get first class from schema
+                    all_classes = schema_view.all_classes()
+                    if all_classes:
+                        target_class = list(all_classes.keys())[0]
 
-            return {
-                'errors': errors,
-                'warnings': warnings,
-                'summary': summary
-            }
+                # Create validator
+                validator = Validator(schema_path)
+
+                # Validate data
+                if isinstance(data, list):
+                    # Validate each row
+                    for idx, row in enumerate(data):
+                        row_errors = ValidationService._validate_single_instance(
+                            validator, row, target_class, idx + 1
+                        )
+                        errors.extend(row_errors)
+                elif isinstance(data, dict):
+                    # Validate single object
+                    errors.extend(ValidationService._validate_single_instance(
+                        validator, data, target_class, 1
+                    ))
+                else:
+                    errors.append({
+                        'message': 'Data must be a dictionary or list of dictionaries',
+                        'row': None,
+                        'field': None
+                    })
+
+                # Generate summary
+                if errors:
+                    summary = f"Validation failed with {len(errors)} error(s)"
+                elif warnings:
+                    summary = f"Validation passed with {len(warnings)} warning(s)"
+                else:
+                    summary = "Validation passed successfully"
+
+                return {
+                    'errors': errors,
+                    'warnings': warnings,
+                    'summary': summary
+                }
+
+            finally:
+                os.unlink(schema_path)
 
         except Exception as e:
             return {
@@ -162,58 +190,40 @@ class ValidationService:
             }
 
     @staticmethod
-    def _validate_row(
-        row: Dict[str, Any],
-        schema: Dict[str, Any],
-        row_number: int,
-        validation_config: Optional[Dict[str, Any]] = None
+    def _validate_single_instance(
+        validator: Validator,
+        instance: Dict[str, Any],
+        target_class: Optional[str],
+        row_number: int
     ) -> List[Dict[str, Any]]:
-        """Validate a single row against schema."""
+        """Validate a single instance using LinkML's validator."""
         errors = []
 
-        # Get schema slots/attributes
-        slots = schema.get('slots', {})
-        classes = schema.get('classes', {})
+        try:
+            # Use LinkML's validator to validate the instance
+            validation_report = validator.validate(instance, target_class=target_class)
 
-        # Basic validation: check required fields
-        # This is a simplified validation - real LinkML validation is more complex
-        for slot_name, slot_def in slots.items():
-            if isinstance(slot_def, dict) and slot_def.get('required', False):
-                if slot_name not in row or row[slot_name] in [None, '', 'NA']:
-                    errors.append({
-                        'message': f'Required field "{slot_name}" is missing or empty',
-                        'row': row_number,
-                        'field': slot_name
-                    })
+            # Convert validation report to our error format
+            if validation_report and hasattr(validation_report, 'results'):
+                for result in validation_report.results:
+                    if result.severity in ['ERROR', 'FATAL']:
+                        errors.append({
+                            'message': result.message,
+                            'row': row_number,
+                            'field': getattr(result, 'field', None)
+                        })
+            # If validation failed but no specific results, just note it
+            elif validation_report is not None:
+                # Validation passed
+                pass
 
-        # Type validation (basic)
-        for field_name, field_value in row.items():
-            if field_name in slots:
-                slot_def = slots[field_name]
-                if isinstance(slot_def, dict):
-                    field_range = slot_def.get('range', 'string')
-
-                    # Basic type checking
-                    if field_range == 'integer':
-                        try:
-                            int(field_value)
-                        except (ValueError, TypeError):
-                            if field_value not in [None, '', 'NA']:
-                                errors.append({
-                                    'message': f'Field "{field_name}" should be an integer, got "{field_value}"',
-                                    'row': row_number,
-                                    'field': field_name
-                                })
-                    elif field_range == 'float':
-                        try:
-                            float(field_value)
-                        except (ValueError, TypeError):
-                            if field_value not in [None, '', 'NA']:
-                                errors.append({
-                                    'message': f'Field "{field_name}" should be a float, got "{field_value}"',
-                                    'row': row_number,
-                                    'field': field_name
-                                })
+        except Exception as e:
+            # If LinkML validation fails, capture the error
+            errors.append({
+                'message': f'Validation error: {str(e)}',
+                'row': row_number,
+                'field': None
+            })
 
         return errors
 

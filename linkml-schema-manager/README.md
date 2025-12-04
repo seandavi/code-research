@@ -6,10 +6,12 @@ A FastAPI-based LinkML schema manager, validator, and toolkit for managing and v
 
 This project provides a comprehensive API for:
 - Managing LinkML schemas with versioning support
-- Validating data files (CSV, TSV, YAML, JSON) against schemas
-- Generating code from schemas (Python, TypeScript, JSON Schema)
+- Validating data files (CSV, TSV, YAML, JSON) against schemas using **LinkML's built-in validators**
+- Generating code from schemas (Python, TypeScript, JSON Schema) using **LinkML's native generators**
 - Creating Excel/CSV templates from schemas
 - Tracking validation history with detailed logging
+
+**Note:** This project leverages LinkML's powerful built-in functionality rather than custom YAML manipulation, ensuring compatibility with LinkML standards and access to all LinkML features.
 
 ## Features
 
@@ -17,19 +19,22 @@ This project provides a comprehensive API for:
 - **Upload schemas**: Store LinkML schemas with unique names
 - **Version control**: Maintain multiple versions of each schema
 - **Metadata tracking**: Capture creation dates, authors, and version notes
-- **Schema validation**: Automatic YAML validation on upload
+- **Schema validation**: Uses LinkML's SchemaView for proper schema validation
 - **Diff generation**: Compare differences between schema versions
 
 ### Schema Functionality
-- **Code generation**: Generate Python dataclasses, TypeScript interfaces, or JSON Schema
-- **Template generation**: Create CSV/Excel templates with proper column headers
+- **Code generation**: Uses LinkML's official generators:
+  - `PythonGenerator` for Python dataclasses
+  - `TypescriptGenerator` for TypeScript interfaces
+  - `JsonSchemaGenerator` for JSON Schema
+- **Template generation**: Create CSV templates using SchemaView for proper schema introspection
 - **Multiple formats**: Support for various output formats
 
 ### Validation
-- **File validation**: Validate CSV, TSV, YAML, and JSON files against schemas
+- **File validation**: Uses LinkML's Validator for proper schema-based validation of CSV, TSV, YAML, and JSON files
 - **Detailed reports**: Get comprehensive validation results with errors and warnings
 - **Validation history**: Track all validation attempts with timestamps
-- **Configurable validation**: Optional validation configuration parameters
+- **Configurable validation**: Optional validation configuration (e.g., target class selection)
 
 ### Logging
 - **Request/Response logging**: Comprehensive logging of all API interactions

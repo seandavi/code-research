@@ -16,8 +16,9 @@ This project provides a comprehensive API for:
 ## Features
 
 ### Schema Management
-- **Upload schemas**: Store LinkML schemas with unique names
-- **Version control**: Maintain multiple versions of each schema
+- **Smart upload**: Single endpoint that creates schemas or versions automatically
+- **Auto-versioning**: Automatic semantic version numbering (1.0.0 → 1.1.0 → 1.2.0)
+- **Version control**: Maintain multiple versions of each schema with full history
 - **Metadata tracking**: Capture creation dates, authors, and version notes
 - **Schema validation**: Uses LinkML's SchemaView for proper schema validation
 - **Diff generation**: Compare differences between schema versions
@@ -86,16 +87,23 @@ Once running, visit:
 
 ### Schema Management
 
-#### Create a Schema
+#### Upload a Schema (Creates Schema or New Version)
 ```bash
 POST /schemas/
-Content-Type: application/json
+Content-Type: multipart/form-data
 
-{
-  "name": "sample_schema",
-  "description": "Schema for sample data"
-}
+- name: "sample_schema"
+- file: schema.yaml
+- version: "1.0.0" (optional - auto-generated if not provided)
+- description: "Schema for sample data" (optional - only used for new schemas)
+- notes: "Initial version" (optional)
+- created_by: "user@example.com" (optional)
 ```
+
+**Behavior:**
+- If schema name is **new**: Creates the schema + first version
+- If schema name **exists**: Creates a new version
+- Version numbers auto-increment (1.0.0 → 1.1.0 → 1.2.0) if not specified
 
 #### List All Schemas
 ```bash
@@ -112,7 +120,7 @@ GET /schemas/{schema_name}
 DELETE /schemas/{schema_name}
 ```
 
-#### Upload Schema Version
+#### Upload Schema Version (Alternative Method)
 ```bash
 POST /schemas/{schema_name}/versions
 Content-Type: multipart/form-data
@@ -122,6 +130,7 @@ Content-Type: multipart/form-data
 - created_by: "user@example.com"
 - file: schema.yaml
 ```
+**Note:** This endpoint requires the schema to already exist.
 
 #### List Schema Versions
 ```bash
@@ -205,21 +214,26 @@ GET /validate/logs/{validation_id}
 
 ## Example Workflow
 
-### 1. Create a Schema
+### 1. Upload a New Schema (First Version)
 ```bash
 curl -X POST "http://localhost:8000/schemas/" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "patient_data", "description": "Schema for patient records"}'
-```
-
-### 2. Upload a Schema Version
-```bash
-curl -X POST "http://localhost:8000/schemas/patient_data/versions" \
-  -F "version=1.0.0" \
+  -F "name=patient_data" \
+  -F "description=Schema for patient records" \
   -F "notes=Initial version" \
   -F "created_by=researcher@example.com" \
   -F "file=@patient_schema.yaml"
 ```
+This creates the schema and automatically assigns version "1.0.0".
+
+### 2. Upload a New Version of the Same Schema
+```bash
+curl -X POST "http://localhost:8000/schemas/" \
+  -F "name=patient_data" \
+  -F "notes=Added new fields for treatment data" \
+  -F "created_by=researcher@example.com" \
+  -F "file=@patient_schema_v2.yaml"
+```
+This automatically creates version "1.1.0" (or you can specify a version explicitly).
 
 ### 3. Validate a Data File
 ```bash

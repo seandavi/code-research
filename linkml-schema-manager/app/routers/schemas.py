@@ -1,12 +1,12 @@
 """API routes for schema management."""
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.schemas import (
-    SchemaCreate, SchemaResponse, SchemaWithVersions,
-    SchemaVersionCreate, SchemaVersionResponse, SchemaVersionDetail,
+    SchemaResponse, SchemaWithVersions,
+    SchemaVersionResponse, SchemaVersionDetail,
     SchemaDiffRequest, SchemaDiffResponse
 )
 from app.services.schema_service import SchemaService
@@ -14,19 +14,62 @@ from app.services.schema_service import SchemaService
 router = APIRouter(prefix="/schemas", tags=["schemas"])
 
 
-@router.post("/", response_model=SchemaResponse, status_code=201)
-async def create_schema(
-    schema: SchemaCreate,
+@router.post("/", response_model=SchemaVersionResponse, status_code=201)
+async def upload_schema(
+    name: str = Form(..., description="Schema name"),
+    file: UploadFile = File(..., description="Schema YAML file"),
+    version: Optional[str] = Form(None, description="Version identifier (auto-generated if not provided)"),
+    description: Optional[str] = Form(None, description="Schema description (only used for new schemas)"),
+    notes: Optional[str] = Form(None, description="Version notes"),
+    created_by: Optional[str] = Form(None, description="Creator identifier"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new schema."""
-    # Check if schema with this name already exists
-    existing = await SchemaService.get_schema_by_name(db, schema.name)
-    if existing:
-        raise HTTPException(status_code=400, detail="Schema with this name already exists")
+    """
+    Upload a schema. If the schema name exists, creates a new version.
+    If the schema name is new, creates the schema and its first version.
 
-    new_schema = await SchemaService.create_schema(db, schema.name, schema.description)
-    return new_schema
+    Version numbers are auto-generated (incrementing from 1.0.0) if not provided.
+    """
+    # Read file content
+    content = await file.read()
+    content_str = content.decode('utf-8')
+
+    # Check if schema exists
+    existing = await SchemaService.get_schema_by_name(db, name)
+
+    if existing:
+        # Schema exists - create new version
+        # Auto-generate version if not provided
+        if not version:
+            versions = await SchemaService.list_schema_versions(db, existing.id)
+            version = SchemaService.generate_next_version(versions)
+
+        schema_version, error = await SchemaService.create_schema_version(
+            db, existing.id, version, content_str, created_by, notes
+        )
+
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+
+        return schema_version
+    else:
+        # Schema doesn't exist - create schema + first version
+        new_schema = await SchemaService.create_schema(db, name, description)
+
+        # Use provided version or default to 1.0.0
+        if not version:
+            version = "1.0.0"
+
+        schema_version, error = await SchemaService.create_schema_version(
+            db, new_schema.id, version, content_str, created_by, notes
+        )
+
+        if error:
+            # Clean up schema if version creation fails
+            await SchemaService.delete_schema(db, new_schema.id)
+            raise HTTPException(status_code=400, detail=error)
+
+        return schema_version
 
 
 @router.get("/", response_model=List[SchemaResponse])

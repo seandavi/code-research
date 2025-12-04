@@ -19,6 +19,48 @@ class SchemaService:
     """Service for managing LinkML schemas."""
 
     @staticmethod
+    def generate_next_version(existing_versions: List[SchemaVersion]) -> str:
+        """
+        Generate the next version number based on existing versions.
+        Uses semantic versioning (MAJOR.MINOR.PATCH).
+
+        If no versions exist, returns "1.0.0".
+        Otherwise, increments the MINOR version.
+        """
+        if not existing_versions:
+            return "1.0.0"
+
+        # Try to parse semantic versions
+        max_version = (1, 0, 0)  # Default
+
+        for version in existing_versions:
+            try:
+                # Try to parse as semantic version (e.g., "1.2.3")
+                parts = version.version.split('.')
+                if len(parts) >= 3:
+                    major = int(parts[0])
+                    minor = int(parts[1])
+                    patch = int(parts[2])
+                    current = (major, minor, patch)
+
+                    if current > max_version:
+                        max_version = current
+                elif len(parts) == 2:
+                    major = int(parts[0])
+                    minor = int(parts[1])
+                    current = (major, minor, 0)
+
+                    if current > max_version:
+                        max_version = current
+            except (ValueError, AttributeError):
+                # If version doesn't follow semantic versioning, skip it
+                continue
+
+        # Increment minor version
+        major, minor, patch = max_version
+        return f"{major}.{minor + 1}.0"
+
+    @staticmethod
     async def create_schema(
         db: AsyncSession,
         name: str,

@@ -1,0 +1,10 @@
+# List of GitHub repositories to summarize
+# Format: owner/repository
+repositories:
+  - python/cpython
+  - microsoft/vscode
+  - torvalds/linux
+
+# Directory where summary markdown files will be written
+# Default: ./summaries
+output_dir: ./summaries
